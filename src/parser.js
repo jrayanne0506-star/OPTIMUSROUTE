@@ -12,6 +12,7 @@
  *   "Qnl 8 Cj i Cs 2 Cs Lateral..."
  *   "EQNM 34/36 Bloco C, 02"
  *   "QNJ 31, 12"
+ *   "QNL 6 Conjunto J, 6/5"          ← número fracionado (lote/casa)
  *   "Av.Samdu Norte- Lt 02, Ap101"   ← endereço atípico
  *   "Quadra CNL , 1, (loja fgstart)" ← endereço atípico
  *
@@ -66,12 +67,15 @@ const QUADRA_PATTERNS = [
 
 // ─── PADRÕES DE BLOCO / CONJUNTO ─────────────────────────────────────────────
 
-const BLOCO_REGEX   = /(?:bloco|bl\.?)\s*([a-z])/i;
+const BLOCO_REGEX    = /(?:bloco|bl\.?)\s*([a-z])/i;
 const CONJUNTO_REGEX = /(?:conjunto|conj\.?|cj\.?)\s*([a-z])/i;
 
 // ─── PADRÕES DE NÚMERO ───────────────────────────────────────────────────────
-
-const NUMERO_REGEX = /,\s*(s\/n|\d+[a-z]?)/i;
+//
+// FIX: adicionado (?:\/\d+)? para capturar números fracionados como "6/5"
+// (lote/casa), comuns em conjuntos do DF. Antes capturava só "6".
+//
+const NUMERO_REGEX = /,\s*(s\/n|\d+(?:\/\d+)?[a-z]?)/i;
 
 // ─── CABEÇALHOS E LINHAS A IGNORAR ───────────────────────────────────────────
 
@@ -159,8 +163,8 @@ function extrairEndereco(texto) {
   if (!quadra) return null;
 
   let sublocal = "Sem sublocal";
-  const blocoM  = texto.match(BLOCO_REGEX);
-  const conjM   = texto.match(CONJUNTO_REGEX);
+  const blocoM = texto.match(BLOCO_REGEX);
+  const conjM  = texto.match(CONJUNTO_REGEX);
 
   if (blocoM) {
     sublocal = `Bl ${blocoM[1].toUpperCase()}`;
