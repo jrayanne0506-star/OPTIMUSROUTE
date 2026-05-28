@@ -1,30 +1,13 @@
 /**
  * app.js — Maestro do sistema Rotas DF
- *
- * Responsabilidades:
- *  1. Receber o arquivo (PDF ou TXT) via drag-and-drop ou input
- *  2. Extrair o texto bruto (PDF.js para PDF, FileReader para TXT)
- *  3. Chamar parser.js para normalizar e agrupar os endereços
- *  4. Renderizar o resultado na tela com drag-and-drop para reordenar quadras
- *  5. Coordenar exportação PDF/TXT via exporter.js
- *
- * ORDEM DAS QUADRAS
- * =================
- * Ao carregar, a ordem das quadras é a de aparecimento no arquivo da Shopee.
- * O usuário pode arrastar os blocos de quadra para reordenar conforme a rota
- * real do entregador. A ordem atual é sempre usada na exportação.
- *
- * ORDEM INTERNA (sublocalidades)
- * ==============================
- * Dentro de cada quadra: Bl A, Bl B... Cj A, Cj B... (alfabética, Bl antes de Cj)
- * Isso é feito pelo parser e não muda.
+ * Com suporte a touch (mobile) para drag-and-drop de quadras.
  */
 
 import { parseRouteText, contarPacotes, resumoPorQuadra, reordenarQuadras } from "./parser.js";
 import { exportarPDF, exportarTXT, contarDuplicatas } from "./exporter.js";
 
 // ─── ESTADO GLOBAL ────────────────────────────────────────────────────────────
-let dadosAgrupados = null;  // objeto com a ordem atual das quadras
+let dadosAgrupados = null;
 let nomeArquivoAtual = "";
 
 // ─── INICIALIZAÇÃO ────────────────────────────────────────────────────────────
@@ -143,14 +126,13 @@ function lerTXT(file) {
 
 // ─── RENDERIZAÇÃO PRINCIPAL ───────────────────────────────────────────────────
 function renderizarResultado(agrupado, totalPacotes) {
-  const resumoEl        = document.getElementById("resumo");
+  const resumoEl         = document.getElementById("resumo");
   const quadrasContainer = document.getElementById("quadras");
-  const ordemInfo       = document.getElementById("ordem-info");
+  const ordemInfo        = document.getElementById("ordem-info");
 
   const resumo = resumoPorQuadra(agrupado);
   const totalQuadras = Object.keys(agrupado).filter((k) => k !== "_OUTROS").length;
 
-  // ── Resumo de topo ──
   resumoEl.innerHTML = `
     <div class="resumo-stats">
       <div class="stat">
@@ -175,20 +157,15 @@ function renderizarResultado(agrupado, totalPacotes) {
     </div>
   `;
 
-  // ── Info drag ──
   ordemInfo.style.display = "flex";
 
-  // ── Blocos de quadra ──
   quadrasContainer.innerHTML = "";
-
   for (const [quadra, sublocs] of Object.entries(agrupado)) {
     quadrasContainer.appendChild(criarBlocoQuadra(quadra, sublocs));
   }
 
-  // Ativa drag-and-drop nas quadras
   ativarDragQuadras(quadrasContainer);
 
-  // Mostra seção
   document.getElementById("secao-upload").classList.add("compacto");
   document.getElementById("resultado").style.display = "block";
   document.getElementById("resultado").scrollIntoView({ behavior: "smooth", block: "start" });
@@ -204,7 +181,6 @@ function criarBlocoQuadra(quadra, sublocs) {
   bloco.dataset.quadra = quadra;
   if (!isOutros) bloco.draggable = true;
 
-  // Header
   const header = document.createElement("div");
   header.className = "quadra-header";
   header.innerHTML = `
@@ -214,10 +190,8 @@ function criarBlocoQuadra(quadra, sublocs) {
   `;
   bloco.appendChild(header);
 
-  // Linhas de sublocal — já chegam ordenadas do parser (Bl A→Z, Cj A→Z)
   for (const [sublocal, numeros] of Object.entries(sublocs)) {
     const contagem  = contarDuplicatas(numeros);
-    const temMulti  = Object.values(contagem).some((v) => v > 1);
 
     const linha = document.createElement("div");
     linha.className = "sublocal-linha";
@@ -249,15 +223,11 @@ function criarBlocoQuadra(quadra, sublocs) {
   return bloco;
 }
 
-// ─── DRAG AND DROP DE QUADRAS ─────────────────────────────────────────────────
-/**
- * Permite arrastar os blocos de quadra para definir a ordem real da rota.
- * Ao soltar, atualiza dadosAgrupados com a nova ordem.
- * Essa ordem é usada na exportação PDF/TXT.
- */
+// ─── DRAG AND DROP DE QUADRAS (mouse + touch) ─────────────────────────────────
 function ativarDragQuadras(container) {
   let arrastando = null;
 
+  // ── Mouse (desktop) ──
   container.addEventListener("dragstart", (e) => {
     arrastando = e.target.closest(".quadra-bloco");
     if (!arrastando) return;
@@ -271,8 +241,6 @@ function ativarDragQuadras(container) {
       arrastando = null;
     }
     document.querySelectorAll(".quadra-bloco").forEach((b) => b.classList.remove("drag-over-bloco"));
-
-    // Atualiza dadosAgrupados com a nova ordem visual
     sincronizarOrdem(container);
   });
 
@@ -284,28 +252,93 @@ function ativarDragQuadras(container) {
     document.querySelectorAll(".quadra-bloco").forEach((b) => b.classList.remove("drag-over-bloco"));
     alvo.classList.add("drag-over-bloco");
 
-    const rect    = alvo.getBoundingClientRect();
-    const meio    = rect.top + rect.height / 2;
-    const depois  = e.clientY > meio;
-
-    if (depois) {
-      alvo.after(arrastando);
-    } else {
-      alvo.before(arrastando);
-    }
+    const rect  = alvo.getBoundingClientRect();
+    const meio  = rect.top + rect.height / 2;
+    if (e.clientY > meio) alvo.after(arrastando);
+    else alvo.before(arrastando);
   });
+
+  // ── Touch (mobile) ──
+  let touchClone = null;
+  let touchOffsetX = 0;
+  let touchOffsetY = 0;
+
+  container.addEventListener("touchstart", (e) => {
+    const handle = e.target.closest(".drag-handle");
+    if (!handle) return;
+
+    arrastando = handle.closest(".quadra-bloco");
+    if (!arrastando || arrastando.dataset.quadra === "_OUTROS") return;
+
+    const touch = e.touches[0];
+    const rect  = arrastando.getBoundingClientRect();
+    touchOffsetX = touch.clientX - rect.left;
+    touchOffsetY = touch.clientY - rect.top;
+
+    // Cria clone visual
+    touchClone = arrastando.cloneNode(true);
+    touchClone.style.cssText = `
+      position: fixed;
+      left: ${rect.left}px;
+      top: ${rect.top}px;
+      width: ${rect.width}px;
+      opacity: 0.85;
+      pointer-events: none;
+      z-index: 9999;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+      border-radius: 10px;
+      transition: none;
+    `;
+    document.body.appendChild(touchClone);
+    arrastando.classList.add("dragging");
+    e.preventDefault();
+  }, { passive: false });
+
+  container.addEventListener("touchmove", (e) => {
+    if (!arrastando || !touchClone) return;
+    e.preventDefault();
+
+    const touch = e.touches[0];
+    touchClone.style.left = `${touch.clientX - touchOffsetX}px`;
+    touchClone.style.top  = `${touch.clientY - touchOffsetY}px`;
+
+    // Encontra o bloco sob o dedo
+    touchClone.style.display = "none";
+    const elAbaixo = document.elementFromPoint(touch.clientX, touch.clientY);
+    touchClone.style.display = "";
+
+    const alvo = elAbaixo?.closest(".quadra-bloco");
+    if (!alvo || alvo === arrastando || alvo.dataset.quadra === "_OUTROS") return;
+
+    document.querySelectorAll(".quadra-bloco").forEach((b) => b.classList.remove("drag-over-bloco"));
+    alvo.classList.add("drag-over-bloco");
+
+    const rect = alvo.getBoundingClientRect();
+    const meio = rect.top + rect.height / 2;
+    if (touch.clientY > meio) alvo.after(arrastando);
+    else alvo.before(arrastando);
+  }, { passive: false });
+
+  const finalizarTouch = () => {
+    if (!arrastando) return;
+    arrastando.classList.remove("dragging");
+    document.querySelectorAll(".quadra-bloco").forEach((b) => b.classList.remove("drag-over-bloco"));
+    if (touchClone) { touchClone.remove(); touchClone = null; }
+    sincronizarOrdem(container);
+    arrastando = null;
+  };
+
+  container.addEventListener("touchend",    finalizarTouch);
+  container.addEventListener("touchcancel", finalizarTouch);
 }
 
-/**
- * Lê a ordem visual atual dos blocos e atualiza dadosAgrupados.
- */
+// ─── SINCRONIZAR ORDEM ────────────────────────────────────────────────────────
 function sincronizarOrdem(container) {
   const novaOrdem = [...container.querySelectorAll(".quadra-bloco")]
     .map((b) => b.dataset.quadra);
 
   dadosAgrupados = reordenarQuadras(dadosAgrupados, novaOrdem);
 
-  // Atualiza os chips de resumo na ordem correta
   const resumo = resumoPorQuadra(dadosAgrupados);
   const chipsEl = document.querySelector(".resumo-chips");
   if (chipsEl) {
