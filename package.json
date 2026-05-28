@@ -1,0 +1,14 @@
+{
+  "name": "rotas-df",
+  "version": "1.0.0",
+  "description": "Organizador de rotas de entrega do DF — processa PDFs da Shopee e gera PDF organizado por quadra",
+  "scripts": {
+    "dev": "npx serve . --port 3000 --no-clipboard",
+    "start": "npx serve . --port 3000"
+  },
+  "keywords": ["shopee", "entregas", "DF", "rota", "QNL"],
+  "license": "MIT",
+  "devDependencies": {
+    "serve": "^14.2.3"
+  }
+}

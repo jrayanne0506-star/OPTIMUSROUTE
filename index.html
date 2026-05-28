@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Rotas DF — Organizador de Entregas</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <style>
+      *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+      :root {
+        --bg:          #0f172a;
+        --bg2:         #1e293b;
+        --bg3:         #334155;
+        --azul:        #2563eb;
+        --azul2:       #3b82f6;
+        --azul-chip:   #dbeafe;
+        --azul-chip-t: #1e3a8a;
+        --amarelo:     #fef3c7;
+        --amar-borda:  #d97706;
+        --amar-texto:  #92400e;
+        --verde:       #22c55e;
+        --cinza:       #64748b;
+        --texto:       #f1f5f9;
+        --texto2:      #94a3b8;
+        --borda:       #334155;
+        --radius:      10px;
+        --font:        'Segoe UI', system-ui, sans-serif;
+      }
+
+      body { background: var(--bg); color: var(--texto); font-family: var(--font); min-height: 100vh; padding-bottom: 60px; }
+
+      /* ── HEADER ── */
+      .site-header { background: var(--bg2); border-bottom: 1px solid var(--borda); padding: 14px 20px; display: flex; align-items: center; gap: 12px; }
+      .site-header .logo { width: 34px; height: 34px; background: var(--azul); border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 17px; flex-shrink: 0; }
+      .site-header h1 { font-size: 17px; font-weight: 700; }
+      .site-header p  { font-size: 11px; color: var(--texto2); margin-top: 1px; }
+
+      main { max-width: 900px; margin: 0 auto; padding: 22px 16px; }
+
+      /* ── UPLOAD ── */
+      #secao-upload { transition: all 0.3s ease; }
+      #secao-upload.compacto #drop-zone { padding: 12px 16px; border-radius: 8px; }
+      #secao-upload.compacto .upload-icon { display: none; }
+      #secao-upload.compacto .upload-textos h2 { font-size: 12px; }
+      #secao-upload.compacto .upload-textos p,
+      #secao-upload.compacto .upload-textos .formatos { display: none; }
+
+      #drop-zone {
+        border: 2px dashed var(--borda); border-radius: var(--radius); padding: 36px 20px;
+        text-align: center; cursor: pointer; transition: all 0.2s ease;
+        background: var(--bg2); display: flex; align-items: center; justify-content: center; gap: 16px;
+      }
+      #drop-zone:hover, #drop-zone.drag-over { border-color: var(--azul2); background: rgba(37,99,235,0.06); }
+      .upload-icon { font-size: 38px; flex-shrink: 0; }
+      .upload-textos h2 { font-size: 14px; font-weight: 600; margin-bottom: 4px; }
+      .upload-textos p  { font-size: 12px; color: var(--texto2); }
+      .upload-textos .formatos { margin-top: 8px; display: flex; gap: 6px; justify-content: center; flex-wrap: wrap; }
+      .formato-tag { background: var(--bg3); border: 1px solid var(--borda); border-radius: 4px; padding: 2px 8px; font-size: 10px; font-weight: 600; letter-spacing: 0.5px; color: var(--texto2); }
+      #file-input { display: none; }
+
+      /* ── LOADING ── */
+      #loading { display: none; align-items: center; justify-content: center; gap: 12px; padding: 24px; color: var(--texto2); font-size: 14px; }
+      .spinner { width: 20px; height: 20px; border: 2px solid var(--borda); border-top-color: var(--azul2); border-radius: 50%; animation: spin 0.8s linear infinite; }
+      @keyframes spin { to { transform: rotate(360deg); } }
+
+      /* ── ERRO ── */
+      #erro { display: none; background: rgba(239,68,68,0.12); border: 1px solid rgba(239,68,68,0.3); border-radius: var(--radius); padding: 12px 16px; color: #fca5a5; font-size: 13px; margin: 12px 0; }
+
+      /* ── RESULTADO ── */
+      #resultado { display: none; }
+
+      /* ── INFO DRAG ── */
+      #ordem-info {
+        display: none;
+        align-items: center;
+        gap: 8px;
+        background: rgba(37,99,235,0.08);
+        border: 1px solid rgba(59,130,246,0.25);
+        border-radius: 8px;
+        padding: 9px 14px;
+        margin-bottom: 14px;
+        font-size: 12px;
+        color: var(--texto2);
+      }
+      #ordem-info .info-icon { font-size: 16px; flex-shrink: 0; }
+
+      /* ── RESUMO ── */
+      #resumo { background: var(--bg2); border: 1px solid var(--borda); border-radius: var(--radius); padding: 12px 16px; margin-bottom: 14px; }
+      .resumo-stats { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; flex-wrap: wrap; }
+      .stat { display: flex; align-items: baseline; gap: 4px; }
+      .stat-num   { font-size: 17px; font-weight: 700; color: var(--azul2); }
+      .stat-label { font-size: 12px; color: var(--texto2); }
+      .stat-sep   { color: var(--borda); font-size: 18px; }
+      .resumo-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+      .resumo-chip { background: var(--bg3); border: 1px solid var(--borda); border-radius: 6px; padding: 3px 10px; font-size: 11px; color: var(--texto2); }
+      .resumo-chip strong { color: var(--azul2); margin-left: 4px; }
+      .chip-outros { border-color: #475569; }
+
+      /* ── AÇÕES ── */
+      .acoes { display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; }
+      .btn { border: none; border-radius: 8px; padding: 9px 16px; font-size: 13px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 6px; transition: all 0.15s ease; font-family: var(--font); }
+      .btn:active { transform: scale(0.97); }
+      .btn-pdf  { background: var(--azul); color: #fff; }
+      .btn-pdf:hover { background: #1d4ed8; }
+      .btn-txt, .btn-copiar { background: var(--bg3); color: var(--texto); border: 1px solid var(--borda); }
+      .btn-txt:hover, .btn-copiar:hover { background: #475569; }
+      .btn-sucesso { background: rgba(34,197,94,0.15) !important; color: var(--verde) !important; border-color: rgba(34,197,94,0.3) !important; }
+      .btn-novo { background: transparent; color: var(--texto2); border: 1px solid var(--borda); margin-left: auto; }
+      .btn-novo:hover { color: var(--texto); border-color: var(--cinza); }
+
+      /* ── QUADRAS ── */
+      #quadras { display: flex; flex-direction: column; gap: 8px; }
+
+      .quadra-bloco {
+        background: var(--bg2); border: 1px solid var(--borda);
+        border-radius: var(--radius); overflow: hidden;
+        transition: opacity 0.15s, box-shadow 0.15s;
+        cursor: default;
+      }
+      .quadra-bloco[draggable="true"] { cursor: grab; }
+      .quadra-bloco[draggable="true"]:active { cursor: grabbing; }
+      .quadra-bloco.dragging { opacity: 0.4; }
+      .quadra-bloco.drag-over-bloco { box-shadow: 0 0 0 2px var(--azul2); }
+      .quadra-outros { border-color: #475569; opacity: 0.88; }
+
+      .quadra-header {
+        display: flex; align-items: center; gap: 8px;
+        padding: 8px 12px; background: var(--azul);
+      }
+      .quadra-outros .quadra-header { background: #475569; }
+      .drag-handle { color: rgba(255,255,255,0.5); font-size: 16px; cursor: grab; user-select: none; flex-shrink: 0; }
+      .drag-handle:active { cursor: grabbing; }
+      .quadra-nome  { font-size: 13px; font-weight: 700; letter-spacing: 0.4px; color: #fff; flex: 1; }
+      .quadra-total { font-size: 10px; background: rgba(255,255,255,0.15); border-radius: 4px; padding: 2px 8px; color: rgba(255,255,255,0.9); font-weight: 600; white-space: nowrap; }
+
+      /* ── SUBLOCAL ── */
+      .sublocal-linha {
+        display: flex; align-items: center; gap: 8px;
+        padding: 6px 10px; border-bottom: 1px solid rgba(51,65,85,0.5); flex-wrap: wrap;
+      }
+      .sublocal-linha:last-child { border-bottom: none; }
+
+      .sublocal-badge {
+        font-size: 10px; font-weight: 700; letter-spacing: 0.5px;
+        border-radius: 5px; padding: 2px 9px; white-space: nowrap;
+        flex-shrink: 0; min-width: 48px; text-align: center;
+      }
+      .badge-bloco    { background: #1d4ed8; color: #fff; }
+      .badge-conjunto { background: #0369a1; color: #fff; }
+      .badge-sem      { background: var(--bg3); color: var(--texto2); border: 1px solid var(--borda); }
+
+      .chips-container { display: flex; flex-wrap: wrap; gap: 4px; }
+
+      .chip-numero {
+        display: inline-flex; align-items: center; gap: 3px;
+        background: var(--azul-chip); color: var(--azul-chip-t);
+        border: 1px solid #93c5fd; border-radius: 5px;
+        padding: 2px 8px; font-size: 11px; font-weight: 600;
+        transition: transform 0.1s;
+      }
+      .chip-numero:hover { transform: scale(1.06); }
+      .chip-multi { background: var(--amarelo); color: var(--amar-texto); border-color: var(--amar-borda); }
+      .chip-qtd   { font-size: 10px; opacity: 0.85; }
+
+      /* ── LEGENDA ── */
+      .legenda {
+        display: flex; gap: 14px; flex-wrap: wrap;
+        padding: 9px 14px; background: var(--bg2);
+        border: 1px solid var(--borda); border-radius: var(--radius);
+        margin-top: 14px; font-size: 11px; color: var(--texto2);
+      }
+      .legenda-item { display: flex; align-items: center; gap: 6px; }
+
+      @media (max-width: 600px) {
+        main { padding: 14px 10px; }
+        .acoes { gap: 6px; }
+        .btn   { padding: 8px 12px; font-size: 12px; }
+        .btn-novo { margin-left: 0; width: 100%; justify-content: center; }
+      }
+    </style>
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="logo">📦</div>
+      <div>
+        <h1>Rotas DF</h1>
+        <p>Organizador de entregas por quadra</p>
+      </div>
+    </header>
+
+    <main>
+      <section id="secao-upload">
+        <div id="drop-zone">
+          <div class="upload-icon">📄</div>
+          <div class="upload-textos">
+            <h2>Arraste o arquivo da rota aqui ou clique para selecionar</h2>
+            <p>Suporta arquivos exportados diretamente do app da Shopee</p>
+            <div class="formatos">
+              <span class="formato-tag">PDF</span>
+              <span class="formato-tag">TXT</span>
+              <span class="formato-tag">CSV</span>
+            </div>
+          </div>
+        </div>
+        <input type="file" id="file-input" accept=".pdf,.txt,.csv" />
+      </section>
+
+      <div id="loading">
+        <div class="spinner"></div>
+        <span>Processando rota…</span>
+      </div>
+
+      <div id="erro"></div>
+
+      <section id="resultado">
+        <div id="resumo"></div>
+
+        <!-- Aviso de drag-and-drop -->
+        <div id="ordem-info">
+          <span class="info-icon">☰</span>
+          <span>Arraste as quadras para definir a ordem da rota do entregador — essa ordem será usada no PDF.</span>
+        </div>
+
+        <div class="acoes">
+          <button class="btn btn-pdf"    id="btn-pdf">⬇ Baixar PDF</button>
+          <button class="btn btn-txt"    id="btn-txt">⬇ Baixar TXT</button>
+          <button class="btn btn-copiar" id="btn-copiar">📋 Copiar texto</button>
+          <button class="btn btn-novo"   id="btn-novo">↩ Nova rota</button>
+        </div>
+
+        <div id="quadras"></div>
+
+        <div class="legenda">
+          <div class="legenda-item">
+            <span class="sublocal-badge badge-bloco" style="font-size:9px;padding:1px 7px;">BL X</span>
+            Bloco (prédio)
+          </div>
+          <div class="legenda-item">
+            <span class="sublocal-badge badge-conjunto" style="font-size:9px;padding:1px 7px;">CJ X</span>
+            Conjunto (casas)
+          </div>
+          <div class="legenda-item">
+            <span class="chip-numero" style="font-size:10px;padding:2px 7px;">42</span>
+            1 pacote
+          </div>
+          <div class="legenda-item">
+            <span class="chip-numero chip-multi" style="font-size:10px;padding:2px 7px;">15 <strong class="chip-qtd">×3</strong></span>
+            Múltiplos pacotes no mesmo endereço
+          </div>
+          <div class="legenda-item" style="margin-left:auto; color:#475569; font-style:italic;">
+            ☰ arraste para reordenar
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <script type="module" src="./src/app.js"></script>
+  </body>
+</html>
