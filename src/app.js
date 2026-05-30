@@ -182,6 +182,23 @@ function renderizarResultado(agrupado, totalPacotes) {
   document.getElementById("resultado").scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
+// ─── HELPERS DE ITEM ─────────────────────────────────────────────────────────
+
+// Normaliza item do array: pode ser string pura ou { numero, enderecoCompleto }
+function resolverItem(item) {
+  if (item && typeof item === "object") {
+    return { numero: item.numero, enderecoCompleto: item.enderecoCompleto || null };
+  }
+  return { numero: item, enderecoCompleto: null };
+}
+
+// Detecta se o número veio de um apartamento
+function tipoUnidade(textoOriginal, numero) {
+  if (!textoOriginal) return "casa";
+  if (/\b(?:ap\.?|apto\.?|apartamento)\b/i.test(textoOriginal)) return "ap";
+  return "casa";
+}
+
 // ─── CRIAÇÃO DE BLOCO DE QUADRA ───────────────────────────────────────────────
 function criarBlocoQuadra(quadra, sublocs, numRota) {
   const isOutros = quadra === "_OUTROS";
@@ -216,6 +233,8 @@ function criarBlocoQuadra(quadra, sublocs, numRota) {
     const isAmbiguo = sublocal === "_ambiguo";
 
     for (const { casa, qtd } of contarDuplicatas(numeros)) {
+      const { numero, enderecoCompleto } = resolverItem(casa);
+
       const linha = document.createElement("div");
       linha.className = "sublocal-linha" + (isAmbiguo ? " linha-ambigua" : "");
 
@@ -236,20 +255,32 @@ function criarBlocoQuadra(quadra, sublocs, numRota) {
       seta.className   = "seta-casa";
       seta.textContent = "→";
 
-      // Número
+      // Número / label da unidade
       const casaSpan = document.createElement("span");
       casaSpan.className = "casa-numero";
+
       if (isOutros) {
-        casaSpan.textContent = casa;
+        casaSpan.textContent = numero;
       } else if (isAmbiguo) {
-        casaSpan.textContent = casa;
+        casaSpan.textContent = numero;
+      } else if (numero === "S/N") {
+        casaSpan.textContent = "S/N";
       } else {
-        casaSpan.textContent = `casa ${casa}`;
+        const tipo = tipoUnidade(enderecoCompleto, numero);
+        casaSpan.textContent = `${tipo === "ap" ? "ap" : "casa"} ${numero}`;
       }
 
       linha.appendChild(badge);
       linha.appendChild(seta);
       linha.appendChild(casaSpan);
+
+      // Linha extra com endereço completo para S/N
+      if (numero === "S/N" && enderecoCompleto) {
+        const enderecoSpan = document.createElement("span");
+        enderecoSpan.className   = "endereco-completo";
+        enderecoSpan.textContent = enderecoCompleto;
+        linha.appendChild(enderecoSpan);
+      }
 
       // Tag de ambíguo
       if (isAmbiguo) {
