@@ -138,8 +138,6 @@ function renderizarResultado(agrupado, totalPacotes) {
   const ordemInfo        = document.getElementById("ordem-info");
 
   const resumo = resumoPorQuadra(agrupado);
-
-  // Conta apenas quadras reais (exclui _OUTROS)
   const quadrasReais = Object.keys(agrupado).filter((k) => k !== "_OUTROS");
   const totalQuadras = quadrasReais.length;
 
@@ -168,10 +166,8 @@ function renderizarResultado(agrupado, totalPacotes) {
   `;
 
   ordemInfo.style.display = "flex";
-
   quadrasContainer.innerHTML = "";
 
-  // Numera as rotas reais (exclui _OUTROS da numeração)
   let rotaIdx = 1;
   for (const [quadra, sublocs] of Object.entries(agrupado)) {
     const isOutros = quadra === "_OUTROS";
@@ -196,7 +192,6 @@ function criarBlocoQuadra(quadra, sublocs, numRota) {
   bloco.dataset.quadra = quadra;
   if (!isOutros) bloco.draggable = true;
 
-  // Cabeçalho da quadra
   const header = document.createElement("div");
   header.className = "quadra-header";
 
@@ -218,10 +213,11 @@ function criarBlocoQuadra(quadra, sublocs, numRota) {
 
   // Conteúdo: uma linha por sublocal + casa
   for (const [sublocal, numeros] of Object.entries(sublocs)) {
-    for (const { casa, qtd } of contarDuplicatas(numeros)) {
+    const isAmbiguo = sublocal === "_ambiguo";
 
+    for (const { casa, qtd } of contarDuplicatas(numeros)) {
       const linha = document.createElement("div");
-      linha.className = "sublocal-linha";
+      linha.className = "sublocal-linha" + (isAmbiguo ? " linha-ambigua" : "");
 
       // Badge do sublocal
       const badge = document.createElement("span");
@@ -229,25 +225,41 @@ function criarBlocoQuadra(quadra, sublocs, numRota) {
         ? "badge-bloco"
         : sublocal.startsWith("Cj")
         ? "badge-conjunto"
+        : isAmbiguo
+        ? "badge-ambiguo"
         : "badge-sem";
       badge.className   = `sublocal-badge ${badgeClass}`;
-      badge.textContent = sublocal === "Sem sublocal" ? "—" : sublocal.toUpperCase();
+      badge.textContent = isAmbiguo ? "?" : sublocal === "Sem sublocal" ? "—" : sublocal.toUpperCase();
 
       // Seta
       const seta = document.createElement("span");
       seta.className   = "seta-casa";
       seta.textContent = "→";
 
-      // Número da casa / endereço
+      // Número
       const casaSpan = document.createElement("span");
       casaSpan.className = "casa-numero";
-      casaSpan.textContent = isOutros ? casa : `casa ${casa}`;
+      if (isOutros) {
+        casaSpan.textContent = casa;
+      } else if (isAmbiguo) {
+        casaSpan.textContent = casa;
+      } else {
+        casaSpan.textContent = `casa ${casa}`;
+      }
 
       linha.appendChild(badge);
       linha.appendChild(seta);
       linha.appendChild(casaSpan);
 
-      // Alerta de múltiplos pacotes (sempre que qtd > 1)
+      // Tag de ambíguo
+      if (isAmbiguo) {
+        const tag = document.createElement("span");
+        tag.className   = "tag-ambiguo";
+        tag.textContent = "⚠ conjunto ou casa?";
+        linha.appendChild(tag);
+      }
+
+      // Alerta de múltiplos pacotes
       if (qtd > 1) {
         const alerta = document.createElement("span");
         alerta.className   = "alerta-pacotes";
@@ -348,14 +360,12 @@ function sincronizarOrdem(container) {
   const novaOrdem = [...container.querySelectorAll(".quadra-bloco")].map((b) => b.dataset.quadra);
   dadosAgrupados = reordenarQuadras(dadosAgrupados, novaOrdem);
 
-  // Renumera os badges de rota
   let rotaIdx = 1;
   container.querySelectorAll(".quadra-bloco").forEach((bloco) => {
     const badge = bloco.querySelector(".rota-badge");
     if (badge) badge.textContent = `Rota ${rotaIdx++}`;
   });
 
-  // Atualiza chips do resumo
   const resumo  = resumoPorQuadra(dadosAgrupados);
   const chipsEl = document.querySelector(".resumo-chips");
   if (chipsEl) {
