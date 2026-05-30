@@ -381,6 +381,7 @@
         .legenda { gap: 10px; }
       }
     </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
   </head>
   <body>
     <header class="site-header">
@@ -411,11 +412,12 @@
               <span class="formato-tag">PDF</span>
               <span class="formato-tag">TXT</span>
               <span class="formato-tag">CSV</span>
+              <span class="formato-tag">XLSX</span> 
             </div>
           </div>
         </div>
-        <input type="file" id="file-input" accept=".pdf,.txt,.csv" />
-      </section>
+       <input type="file" id="file-input" accept=".pdf,.txt,.csv,.xlsx" />
+
 
       <div id="loading">
         <div class="spinner"></div>
@@ -467,7 +469,7 @@
       <div class="footer-sig">
         <span class="made-by">Desenvolvido por</span>
         <span class="dev-name">Jeniffer Rayanne</span>
-        <span class="dev-role">Entregadora · Desenvolvedora</span>
+        <span class="dev-role">· Desenvolvedora</span>
       </div>
       <div class="footer-dot"></div>
     </footer>

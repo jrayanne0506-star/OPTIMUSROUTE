@@ -3,8 +3,10 @@
  * Com suporte a touch (mobile) para drag-and-drop de quadras.
  */
 
+// linha 1 — adicionar excel-parser no import
 import { parseRouteText, contarPacotes, resumoPorQuadra, reordenarQuadras } from "./parser.js";
 import { exportarPDF, exportarTXT, contarDuplicatas } from "./exporter.js";
+import { parseExcel } from "./excel-parser.js"; // ← ADD
 
 // ─── ESTADO GLOBAL ────────────────────────────────────────────────────────────
 let dadosAgrupados = null;
@@ -45,17 +47,26 @@ async function processarArquivo(file) {
   esconderResultado();
 
   try {
-    let textoRaw = "";
+    let dadosParseados = null; // ← mudou de textoRaw
+
     if (file.type === "application/pdf" || file.name.endsWith(".pdf")) {
-      textoRaw = await extrairTextoPDF(file);
+      const textoRaw = await extrairTextoPDF(file);
+      dadosParseados = parseRouteText(textoRaw);
+
     } else if (file.name.endsWith(".txt") || file.name.endsWith(".csv")) {
-      textoRaw = await lerTXT(file);
+      const textoRaw = await lerTXT(file);
+      dadosParseados = parseRouteText(textoRaw);
+
+    } else if (file.name.endsWith(".xlsx")) {           // ← ADD bloco
+      const buffer = await file.arrayBuffer();
+      dadosParseados = parseExcel(buffer);
+
     } else {
-      mostrarErro("Formato não suportado. Use PDF ou TXT.");
+      mostrarErro("Formato não suportado. Use PDF, TXT ou XLSX.");
       return;
     }
 
-    dadosAgrupados = parseRouteText(textoRaw);
+    dadosAgrupados = dadosParseados;
     const total = contarPacotes(dadosAgrupados);
 
     if (total === 0) {
