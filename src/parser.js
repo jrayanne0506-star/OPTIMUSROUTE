@@ -36,7 +36,7 @@ export function parseRouteText(rawText) {
     const trimmed = linha.trim();
     if (IGNORE_PATTERNS.some((p) => p.test(trimmed))) continue;
 
-    const semPrefixo = trimmed.replace(/^[\d\-]+\s+[\d\-]+\s+/, "").trim();
+    const semPrefixo = trimmed.replace(/^[\d\-]+\s+[\d\-]+\s+/, "").trim().replace(/^-\s+-\s+/, "").trim();
     const resultado = extrairEndereco(semPrefixo);
 
     if (resultado) {
