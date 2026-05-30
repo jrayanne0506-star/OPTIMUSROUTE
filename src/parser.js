@@ -136,6 +136,9 @@ function extrairEnderecoQNJ(texto, quadra) {
 // ─── EXTRAÇÃO DO NÚMERO DA CASA ──────────────────────────────────────────────
 
 function extrairNumero(texto) {
+  // 0. S/N explícito
+  if (/\bS\/N\b/i.test(texto)) return "S/N";
+
   // 1. Explícito: "casa 13", "ap 101", "apto 301"
   const casaExp = texto.match(/\b(?:casa|ap\.?|apto\.?)\s*(\d+[a-z]?)/i);
   if (casaExp) return casaExp[1].toUpperCase();
