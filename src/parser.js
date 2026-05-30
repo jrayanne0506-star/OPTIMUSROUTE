@@ -11,8 +11,8 @@
  *   "QNL 10 Cj D casa 04, 04"
  *   "Qnl 8 Cj i Cs 2 Cs Lateral..."
  *   "EQNM 34/36 Bloco C, 02"
- *   "QNJ 31, 12"
- *   "Av.Samdu Norte- Lt 02, Ap101"   ← endereço atípico
+ *   "QNJ 31, 12, Casa 2 no beco"    ← sem Bloco/Conjunto; casa após segunda vírgula
+ *   "Av.Samdu Norte- Lt 02, Ap101"  ← endereço atípico
  *   "Quadra CNL , 1, (loja fgstart)" ← endereço atípico
  *
  * ESTRUTURA DE SAÍDA
@@ -66,12 +66,9 @@ const QUADRA_PATTERNS = [
 
 // ─── PADRÕES DE BLOCO / CONJUNTO ─────────────────────────────────────────────
 
-const BLOCO_REGEX   = /(?:bloco|bl\.?)\s*([a-z])/i;
-const CONJUNTO_REGEX = /(?:conjunto|conj\.?|cj\.?)\s*([a-z])/i;
-
-// ─── PADRÕES DE NÚMERO ───────────────────────────────────────────────────────
-
-const NUMERO_REGEX = /,\s*(s\/n|\d+[a-z]?)/i;
+const BLOCO_REGEX    = /(?:bloco|bl\.?)\s*([a-z])/i;
+// "cs" adicionado como alias de "conjunto" — cobre "Cj i Cs 2", "Cs Lateral", etc.
+const CONJUNTO_REGEX = /(?:conjunto|conj\.?|cj\.?|cs\.?)\s*([a-z])/i;
 
 // ─── CABEÇALHOS E LINHAS A IGNORAR ───────────────────────────────────────────
 
@@ -168,16 +165,35 @@ function extrairEndereco(texto) {
     sublocal = `Cj ${conjM[1].toUpperCase()}`;
   }
 
-  let numero = "?";
-  const numM = texto.match(NUMERO_REGEX);
-  if (numM) {
-    numero = numM[1].toUpperCase();
-  } else {
-    const numSolto = texto.match(/\b(\d{1,4})\s*(?:,|$)/);
-    if (numSolto) numero = numSolto[1];
-  }
+  const numero = extrairNumero(texto);
 
   return { quadra, sublocal, numero };
+}
+
+// ─── EXTRAÇÃO DO NÚMERO DA CASA ──────────────────────────────────────────────
+
+/**
+ * Extrai o número da casa/apartamento do endereço.
+ * Mesma lógica do excel-parser para consistência.
+ *
+ * Prioridade:
+ *   1. Explícito: "casa 13", "cs 02", "ap 101"
+ *   2. Primeiro número após vírgula — "QNJ 31, 12" ou "QNJ 31, 12, Casa 2"
+ *      Quando há segunda vírgula com casa explícita, a regra 1 já captura.
+ *   3. Fallback: último número do texto
+ */
+function extrairNumero(texto) {
+  // 1. Explícito: "casa 13", "cs 02", "ap 101", "apto 301"
+  const casaExp = texto.match(/\b(?:casa|ap\.?|apto\.?)\s*(\d+[a-z]?)/i);
+  if (casaExp) return casaExp[1].toUpperCase();
+
+  // 2. Primeiro número após vírgula
+  const aposVirgula = texto.match(/,\s*(\d+[a-z]?)/i);
+  if (aposVirgula) return aposVirgula[1].toUpperCase();
+
+  // 3. Fallback: último número do texto
+  const todos = texto.match(/\d+/g);
+  return todos ? todos[todos.length - 1] : "?";
 }
 
 // ─── EXTRAÇÃO DE ENDEREÇO ATÍPICO ────────────────────────────────────────────
