@@ -40,11 +40,11 @@ export function parseRouteText(rawText) {
     const resultado = extrairEndereco(semPrefixo);
 
     if (resultado) {
-      const { quadra, sublocal, numero } = resultado;
+      const { quadra, sublocal, numero, enderecoCompleto } = resultado;
       if (!agrupado.has(quadra)) agrupado.set(quadra, new Map());
       const sublocs = agrupado.get(quadra);
       if (!sublocs.has(sublocal)) sublocs.set(sublocal, []);
-      sublocs.get(sublocal).push(numero);
+      sublocs.get(sublocal).push(enderecoCompleto ? { numero, enderecoCompleto } : numero);
     } else {
       const atipico = extrairAtipico(semPrefixo);
       if (atipico) {
@@ -94,7 +94,8 @@ function extrairEndereco(texto) {
   }
 
   const numero = extrairNumero(texto);
-  return { quadra, sublocal, numero };
+  const enderecoCompleto = numero === "S/N" ? texto : null;
+  return { quadra, sublocal, numero, enderecoCompleto };
 }
 
 // ─── LÓGICA ESPECIAL PARA QNJ ────────────────────────────────────────────────
