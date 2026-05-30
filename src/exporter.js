@@ -1,28 +1,19 @@
 /**
  * exporter.js — Geração de PDF e TXT a partir do objeto agrupado
  *
- * ESTRUTURA DO PDF GERADO
- * =======================
- * - Cabeçalho com título + data + total de pacotes
- * - Para cada quadra:
- *     [ Quadra 203 — 18 pacotes ]
- *     Cj 14  →  05  10  13 ×22
- *     Cj 15  →  20 ×2
- *     ...
- * - Endereços com múltiplos pacotes recebem badge "×N"
- * - Seção "_OUTROS" ao final com endereços atípicos
- * - Quebra de página automática
- *
- * MÚLTIPLOS PACOTES
- * =================
- * Se "Cj 14" tem ["05","13","13"] → 05 normal, 13 aparece como "13 ×2"
+ * LAYOUT:
+ *   Quadra 203 — 32 pacotes
+ *     Cj 14  →  casa 05
+ *     Cj 14  →  casa 10
+ *     Cj 14  →  casa 13  ⚠️ 22 pacotes
+ *     Cj 15  →  casa 20  ⚠️ 2 pacotes
  */
 
 // ─── EXPORTAÇÃO TXT ───────────────────────────────────────────────────────────
 
 export function exportarTXT(agrupado, nomeArquivo = "") {
   const linhas = [];
-  const agora = new Date().toLocaleDateString("pt-BR", {
+  const agora  = new Date().toLocaleDateString("pt-BR", {
     day: "2-digit", month: "2-digit", year: "numeric",
     hour: "2-digit", minute: "2-digit",
   });
@@ -36,18 +27,19 @@ export function exportarTXT(agrupado, nomeArquivo = "") {
 
   for (const [quadra, sublocs] of Object.entries(agrupado)) {
     const totalQ = Object.values(sublocs).reduce((s, a) => s + a.length, 0);
-    const titulo =
-      quadra === "_OUTROS"
-        ? `▸ OUTROS ENDEREÇOS (${totalQ} pacote${totalQ > 1 ? "s" : ""})`
-        : `▸ ${quadra}  —  ${totalQ} pacote${totalQ > 1 ? "s" : ""}`;
+    const titulo = quadra === "_OUTROS"
+      ? `▸ OUTROS ENDEREÇOS (${totalQ} pacote${totalQ > 1 ? "s" : ""})`
+      : `▸ ${quadra}  —  ${totalQ} pacote${totalQ > 1 ? "s" : ""}`;
 
     linhas.push(titulo);
     linhas.push("─".repeat(titulo.length));
 
     for (const [sublocal, numeros] of Object.entries(sublocs)) {
       const contagem = contarDuplicatas(numeros);
-      const chips    = formatarChipsTXT(contagem);
-      linhas.push(`  ${sublocal.padEnd(12)}→  ${chips}`);
+      for (const [casa, qtd] of Object.entries(contagem)) {
+        const aviso = qtd > 1 ? `  ⚠️  ${qtd} pacotes` : "";
+        linhas.push(`  ${sublocal.padEnd(10)}  →  casa ${casa}${aviso}`);
+      }
     }
 
     linhas.push("");
@@ -62,29 +54,29 @@ export function exportarPDF(agrupado, nomeArquivo = "rota") {
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF({ unit: "mm", format: "a4" });
 
-  const MARGEM      = 12;
-  const LARGURA     = 210 - MARGEM * 2;
-  const ALTURA_PAG  = 297;
-  const RODAPE_H    = 10;
-  const CHIP_H      = 6;
-  const CHIP_W_BASE = 10;
-  const CHIP_PAD    = 2.5;
-  const CHIP_RADIUS = 1.5;
+  const MARGEM     = 12;
+  const LARGURA    = 210 - MARGEM * 2;
+  const ALTURA_PAG = 297;
+  const RODAPE_H   = 10;
+  const LINHA_H    = 8; // altura de cada linha casa
 
-  const COR_BG         = [17, 24, 39];
-  const COR_QUADRA_BG  = [30, 58, 138];
-  const COR_BLOCO_BG   = [37, 99, 235];
-  const COR_CHIP_BG    = [239, 246, 255];
-  const COR_MULTI_BG   = [254, 243, 199];
-  const COR_MULTI_BORDA= [217, 119, 6];
-  const COR_OUTROS_BG  = [71, 85, 105];
-  const COR_TEXTO_CLARO= [255, 255, 255];
-  const COR_TEXTO_CHIP = [30, 58, 138];
-  const COR_SEPARADOR  = [203, 213, 225];
-  const COR_SUBTEXTO   = [100, 116, 139];
+  const COR_BG          = [17, 24, 39];
+  const COR_QUADRA_BG   = [30, 58, 138];
+  const COR_OUTROS_BG   = [71, 85, 105];
+  const COR_CONJ_BG     = [37, 99, 235];
+  const COR_BLOCO_BG    = [6, 95, 70];
+  const COR_LINHA_PAR   = [248, 250, 252];
+  const COR_LINHA_IMPAR = [255, 255, 255];
+  const COR_ALERTA_BG   = [254, 243, 199];
+  const COR_ALERTA_BD   = [217, 119, 6];
+  const COR_ALERTA_TX   = [146, 64, 14];
+  const COR_TEXTO_CLARO = [255, 255, 255];
+  const COR_TEXTO_ESCURO= [15, 23, 42];
+  const COR_SEPARADOR   = [203, 213, 225];
+  const COR_SUBTEXTO    = [100, 116, 139];
+  const COR_SETA        = [148, 163, 184];
 
-  let y = MARGEM;
-  let pagina = 1;
+  let y = MARGEM, pagina = 1, linhaIdx = 0;
 
   const novaPagina = () => {
     doc.setFontSize(8);
@@ -93,24 +85,20 @@ export function exportarPDF(agrupado, nomeArquivo = "rota") {
     doc.addPage();
     pagina++;
     y = MARGEM;
+    linhaIdx = 0;
   };
 
-  const garantirEspaco = (necessario) => {
-    if (y + necessario > ALTURA_PAG - RODAPE_H - MARGEM) novaPagina();
+  const garantirEspaco = (h) => {
+    if (y + h > ALTURA_PAG - RODAPE_H - MARGEM) novaPagina();
   };
 
   // ── Cabeçalho ──
   doc.setFillColor(...COR_BG);
   doc.rect(0, 0, 210, 28, "F");
-
   doc.setFontSize(16);
   doc.setFont("helvetica", "bold");
   doc.setTextColor(...COR_TEXTO_CLARO);
   doc.text("ROTA ORGANIZADA POR QUADRA", 105, 11, { align: "center" });
-
-  doc.setFontSize(8);
-  doc.setFont("helvetica", "normal");
-  doc.setTextColor(148, 163, 184);
 
   const totalPacotes = Object.values(agrupado).reduce(
     (s, sub) => s + Object.values(sub).reduce((ss, a) => ss + a.length, 0), 0
@@ -121,14 +109,15 @@ export function exportarPDF(agrupado, nomeArquivo = "rota") {
     hour: "2-digit", minute: "2-digit",
   });
 
-  const infoTexto = nomeArquivo
-    ? `${nomeArquivo}  •  ${totalPacotes} pacotes  •  ${totalQuadras} quadras  •  ${agora}`
-    : `${totalPacotes} pacotes  •  ${totalQuadras} quadras  •  ${agora}`;
-  doc.text(infoTexto, 105, 19, { align: "center" });
-
+  doc.setFontSize(8);
+  doc.setFont("helvetica", "normal");
+  doc.setTextColor(148, 163, 184);
+  doc.text(
+    `${nomeArquivo ? nomeArquivo + "  •  " : ""}${totalPacotes} pacotes  •  ${totalQuadras} quadras  •  ${agora}`,
+    105, 19, { align: "center" }
+  );
   doc.setFillColor(59, 130, 246);
   doc.rect(0, 26, 210, 2, "F");
-
   y = 34;
 
   // ── Corpo ──
@@ -136,10 +125,9 @@ export function exportarPDF(agrupado, nomeArquivo = "rota") {
     const isOutros = quadra === "_OUTROS";
     const totalQ   = Object.values(sublocs).reduce((s, a) => s + a.length, 0);
 
-    const estimativa = 10 + Object.keys(sublocs).length * (CHIP_H + 3) + 4;
-    garantirEspaco(Math.min(estimativa, 40));
+    garantirEspaco(12);
 
-    // Faixa título da quadra
+    // Faixa da quadra
     doc.setFillColor(...(isOutros ? COR_OUTROS_BG : COR_QUADRA_BG));
     doc.roundedRect(MARGEM, y, LARGURA, 9, 1.5, 1.5, "F");
     doc.setFontSize(10);
@@ -151,75 +139,69 @@ export function exportarPDF(agrupado, nomeArquivo = "rota") {
         : `${quadra}   —   ${totalQ} pacote${totalQ > 1 ? "s" : ""}`,
       MARGEM + 3, y + 6
     );
-    y += 12;
+    y += 11;
+    linhaIdx = 0;
 
-    // Linhas de sublocal
+    // Uma linha por sublocal + casa
     for (const [sublocal, numeros] of Object.entries(sublocs)) {
-      const contagem   = contarDuplicatas(numeros);
-      const chips      = Object.entries(contagem);
-      const linhasChips = calcularLinhasChips(chips, LARGURA - 35, CHIP_W_BASE, CHIP_PAD);
-      const altSublocal = linhasChips * (CHIP_H + 2) + 4;
+      const contagem = contarDuplicatas(numeros);
 
-      garantirEspaco(altSublocal + 2);
+      for (const [casa, qtd] of Object.entries(contagem)) {
+        garantirEspaco(LINHA_H);
 
-      // Fundo linha
-      doc.setFillColor(248, 250, 252);
-      doc.roundedRect(MARGEM, y, LARGURA, altSublocal, 1, 1, "F");
-      doc.setDrawColor(...COR_SEPARADOR);
-      doc.setLineWidth(0.3);
-      doc.roundedRect(MARGEM, y, LARGURA, altSublocal, 1, 1, "S");
+        // Fundo zebrado
+        doc.setFillColor(...(linhaIdx % 2 === 0 ? COR_LINHA_PAR : COR_LINHA_IMPAR));
+        doc.rect(MARGEM, y, LARGURA, LINHA_H, "F");
 
-      // Badge sublocal
-      const badgeW = 28;
-      doc.setFillColor(...COR_BLOCO_BG);
-      doc.roundedRect(MARGEM + 2, y + 1.5, badgeW, 6, 1, 1, "F");
-      doc.setFontSize(8);
-      doc.setFont("helvetica", "bold");
-      doc.setTextColor(...COR_TEXTO_CLARO);
-      doc.text(sublocal.toUpperCase(), MARGEM + 2 + badgeW / 2, y + 5.8, { align: "center" });
+        // Separador leve
+        doc.setDrawColor(...COR_SEPARADOR);
+        doc.setLineWidth(0.2);
+        doc.line(MARGEM, y + LINHA_H, MARGEM + LARGURA, y + LINHA_H);
 
-      // Chips de números
-      let cx = MARGEM + badgeW + 6;
-      let cy = y + 2;
+        // Badge sublocal
+        const badgeW = 22;
+        const corBadge = sublocal.startsWith("Bl") ? COR_BLOCO_BG : COR_CONJ_BG;
+        doc.setFillColor(...corBadge);
+        doc.roundedRect(MARGEM + 2, y + 1.2, badgeW, 5.5, 1, 1, "F");
+        doc.setFontSize(7.5);
+        doc.setFont("helvetica", "bold");
+        doc.setTextColor(...COR_TEXTO_CLARO);
+        doc.text(sublocal.toUpperCase(), MARGEM + 2 + badgeW / 2, y + 5, { align: "center" });
 
-      for (const [num, qtd] of chips) {
-        const isMulti = qtd > 1;
-        const label   = isMulti ? `${num} ×${qtd}` : num;
-        const chipW   = Math.max(CHIP_W_BASE, label.length * 2.2 + CHIP_PAD * 2);
+        // Seta
+        doc.setFontSize(8);
+        doc.setFont("helvetica", "normal");
+        doc.setTextColor(...COR_SETA);
+        doc.text("→", MARGEM + badgeW + 5, y + 5.2);
 
-        if (cx + chipW > MARGEM + LARGURA - 3) {
-          cx  = MARGEM + badgeW + 6;
-          cy += CHIP_H + 2;
-        }
+        // Casa
+        doc.setFontSize(9);
+        doc.setFont("helvetica", "bold");
+        doc.setTextColor(...COR_TEXTO_ESCURO);
+        doc.text(`casa ${casa}`, MARGEM + badgeW + 11, y + 5.2);
 
-        if (isMulti) {
-          doc.setFillColor(...COR_MULTI_BG);
-          doc.roundedRect(cx, cy, chipW, CHIP_H, CHIP_RADIUS, CHIP_RADIUS, "F");
-          doc.setDrawColor(...COR_MULTI_BORDA);
+        // Alerta de múltiplos pacotes
+        if (qtd > 1) {
+          const alertaLabel = `⚠ ${qtd} pacotes`;
+          const alertaW     = alertaLabel.length * 2.1 + 6;
+          const alertaX     = MARGEM + LARGURA - alertaW - 2;
+          doc.setFillColor(...COR_ALERTA_BG);
+          doc.roundedRect(alertaX, y + 1.2, alertaW, 5.5, 1, 1, "F");
+          doc.setDrawColor(...COR_ALERTA_BD);
           doc.setLineWidth(0.4);
-          doc.roundedRect(cx, cy, chipW, CHIP_H, CHIP_RADIUS, CHIP_RADIUS, "S");
+          doc.roundedRect(alertaX, y + 1.2, alertaW, 5.5, 1, 1, "S");
           doc.setFontSize(7.5);
           doc.setFont("helvetica", "bold");
-          doc.setTextColor(146, 64, 14);
-        } else {
-          doc.setFillColor(...COR_CHIP_BG);
-          doc.roundedRect(cx, cy, chipW, CHIP_H, CHIP_RADIUS, CHIP_RADIUS, "F");
-          doc.setDrawColor(147, 197, 253);
-          doc.setLineWidth(0.3);
-          doc.roundedRect(cx, cy, chipW, CHIP_H, CHIP_RADIUS, CHIP_RADIUS, "S");
-          doc.setFontSize(7.5);
-          doc.setFont("helvetica", "bold");
-          doc.setTextColor(...COR_TEXTO_CHIP);
+          doc.setTextColor(...COR_ALERTA_TX);
+          doc.text(alertaLabel, alertaX + alertaW / 2, y + 5, { align: "center" });
         }
 
-        doc.text(label, cx + chipW / 2, cy + 4.2, { align: "center" });
-        cx += chipW + 2.5;
+        y += LINHA_H;
+        linhaIdx++;
       }
-
-      y += altSublocal + 2;
     }
 
-    y += 5;
+    y += 5; // espaço entre quadras
   }
 
   // Rodapé última página
@@ -227,14 +209,13 @@ export function exportarPDF(agrupado, nomeArquivo = "rota") {
   doc.setTextColor(...COR_SUBTEXTO);
   doc.text(`Página ${pagina}  •  Gerado por Rotas DF`, 105, ALTURA_PAG - 5, { align: "center" });
 
-  const nomeSaida = nomeArquivo.replace(/\.[^.]+$/, "") || "rota";
-  doc.save(`${nomeSaida}_organizado.pdf`);
+  doc.save(`${nomeArquivo.replace(/\.[^.]+$/, "") || "rota"}_organizado.pdf`);
 }
 
 // ─── HELPERS ──────────────────────────────────────────────────────────────────
 
 /**
- * Conta duplicatas E ordena as casas numericamente.
+ * Conta duplicatas E ordena numericamente.
  * ["13","05","13","10"] → { "05":1, "10":1, "13":2 }
  */
 export function contarDuplicatas(numeros) {
@@ -249,21 +230,4 @@ export function contarDuplicatas(numeros) {
       return a.localeCompare(b);
     })
   );
-}
-
-function formatarChipsTXT(contagem) {
-  return Object.entries(contagem)
-    .map(([n, qtd]) => (qtd > 1 ? `${n} ×${qtd}` : n))
-    .join("   ");
-}
-
-function calcularLinhasChips(chips, larguraDisponivel, chipWBase, chipPad) {
-  let cx = 0, linhas = 1;
-  for (const [num, qtd] of chips) {
-    const label = qtd > 1 ? `${num} ×${qtd}` : num;
-    const chipW = Math.max(chipWBase, label.length * 2.2 + chipPad * 2);
-    if (cx + chipW > larguraDisponivel && cx > 0) { linhas++; cx = 0; }
-    cx += chipW + 2.5;
-  }
-  return linhas;
 }

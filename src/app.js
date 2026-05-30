@@ -3,10 +3,9 @@
  * Com suporte a touch (mobile) para drag-and-drop de quadras.
  */
 
-// linha 1 — adicionar excel-parser no import
 import { parseRouteText, contarPacotes, resumoPorQuadra, reordenarQuadras } from "./parser.js";
 import { exportarPDF, exportarTXT, contarDuplicatas } from "./exporter.js";
-import { parseExcel } from "./excel-parser.js"; // ← ADD
+import { parseExcel } from "./excel-parser.js";
 
 // ─── ESTADO GLOBAL ────────────────────────────────────────────────────────────
 let dadosAgrupados = null;
@@ -47,20 +46,17 @@ async function processarArquivo(file) {
   esconderResultado();
 
   try {
-    let dadosParseados = null; // ← mudou de textoRaw
+    let dadosParseados = null;
 
-    if (file.type === "application/pdf" || file.name.endsWith(".pdf")) {
+    if (file.name.endsWith(".pdf")) {
       const textoRaw = await extrairTextoPDF(file);
       dadosParseados = parseRouteText(textoRaw);
-
     } else if (file.name.endsWith(".txt") || file.name.endsWith(".csv")) {
       const textoRaw = await lerTXT(file);
       dadosParseados = parseRouteText(textoRaw);
-
-    } else if (file.name.endsWith(".xlsx")) {           // ← ADD bloco
+    } else if (file.name.endsWith(".xlsx")) {
       const buffer = await file.arrayBuffer();
       dadosParseados = parseExcel(buffer);
-
     } else {
       mostrarErro("Formato não suportado. Use PDF, TXT ou XLSX.");
       return;
@@ -188,10 +184,11 @@ function criarBlocoQuadra(quadra, sublocs) {
   const totalQ   = Object.values(sublocs).reduce((s, a) => s + a.length, 0);
 
   const bloco = document.createElement("div");
-  bloco.className  = `quadra-bloco ${isOutros ? "quadra-outros" : ""}`;
+  bloco.className      = `quadra-bloco ${isOutros ? "quadra-outros" : ""}`;
   bloco.dataset.quadra = quadra;
   if (!isOutros) bloco.draggable = true;
 
+  // Cabeçalho da quadra
   const header = document.createElement("div");
   header.className = "quadra-header";
   header.innerHTML = `
@@ -201,34 +198,48 @@ function criarBlocoQuadra(quadra, sublocs) {
   `;
   bloco.appendChild(header);
 
+  // Uma linha por sublocal + casa
   for (const [sublocal, numeros] of Object.entries(sublocs)) {
-    const contagem  = contarDuplicatas(numeros);
+    const contagem = contarDuplicatas(numeros); // { "05": 1, "13": 22, ... }
 
-    const linha = document.createElement("div");
-    linha.className = "sublocal-linha";
+    for (const [casa, qtd] of Object.entries(contagem)) {
+      const linha = document.createElement("div");
+      linha.className = "sublocal-linha";
 
-    const badge = document.createElement("span");
-    badge.className = `sublocal-badge ${sublocal.startsWith("Bl") ? "badge-bloco" : sublocal.startsWith("Cj") ? "badge-conjunto" : "badge-sem"}`;
-    badge.textContent = sublocal.toUpperCase();
-    linha.appendChild(badge);
+      // Badge do sublocal (Cj X / Bl X / Sem conjunto)
+      const badge = document.createElement("span");
+      const badgeClass = sublocal.startsWith("Bl")
+        ? "badge-bloco"
+        : sublocal.startsWith("Cj")
+        ? "badge-conjunto"
+        : "badge-sem";
+      badge.className  = `sublocal-badge ${badgeClass}`;
+      badge.textContent = sublocal.toUpperCase();
 
-    const chips = document.createElement("div");
-    chips.className = "chips-container";
+      // Seta separadora
+      const seta = document.createElement("span");
+      seta.className   = "seta-casa";
+      seta.textContent = "→";
 
-    for (const [num, qtd] of Object.entries(contagem)) {
-      const chip = document.createElement("span");
-      chip.className = `chip-numero ${qtd > 1 ? "chip-multi" : ""}`;
+      // Número da casa
+      const casaSpan = document.createElement("span");
+      casaSpan.className   = "casa-numero";
+      casaSpan.textContent = `casa ${casa}`;
+
+      linha.appendChild(badge);
+      linha.appendChild(seta);
+      linha.appendChild(casaSpan);
+
+      // Alerta de múltiplos pacotes
       if (qtd > 1) {
-        chip.innerHTML = `${num} <strong class="chip-qtd">×${qtd}</strong>`;
-        chip.title = `${qtd} pacotes no número ${num}`;
-      } else {
-        chip.textContent = num;
+        const alerta = document.createElement("span");
+        alerta.className   = "alerta-pacotes";
+        alerta.textContent = `⚠️ ${qtd} pacotes`;
+        linha.appendChild(alerta);
       }
-      chips.appendChild(chip);
-    }
 
-    linha.appendChild(chips);
-    bloco.appendChild(linha);
+      bloco.appendChild(linha);
+    }
   }
 
   return bloco;
@@ -238,7 +249,6 @@ function criarBlocoQuadra(quadra, sublocs) {
 function ativarDragQuadras(container) {
   let arrastando = null;
 
-  // ── Mouse (desktop) ──
   container.addEventListener("dragstart", (e) => {
     arrastando = e.target.closest(".quadra-bloco");
     if (!arrastando) return;
@@ -259,47 +269,27 @@ function ativarDragQuadras(container) {
     e.preventDefault();
     const alvo = e.target.closest(".quadra-bloco");
     if (!alvo || alvo === arrastando || alvo.dataset.quadra === "_OUTROS") return;
-
     document.querySelectorAll(".quadra-bloco").forEach((b) => b.classList.remove("drag-over-bloco"));
     alvo.classList.add("drag-over-bloco");
-
-    const rect  = alvo.getBoundingClientRect();
-    const meio  = rect.top + rect.height / 2;
-    if (e.clientY > meio) alvo.after(arrastando);
+    const rect = alvo.getBoundingClientRect();
+    if (e.clientY > rect.top + rect.height / 2) alvo.after(arrastando);
     else alvo.before(arrastando);
   });
 
-  // ── Touch (mobile) ──
-  let touchClone = null;
-  let touchOffsetX = 0;
-  let touchOffsetY = 0;
+  // Touch
+  let touchClone = null, touchOffsetX = 0, touchOffsetY = 0;
 
   container.addEventListener("touchstart", (e) => {
     const handle = e.target.closest(".drag-handle");
     if (!handle) return;
-
     arrastando = handle.closest(".quadra-bloco");
     if (!arrastando || arrastando.dataset.quadra === "_OUTROS") return;
-
     const touch = e.touches[0];
     const rect  = arrastando.getBoundingClientRect();
     touchOffsetX = touch.clientX - rect.left;
     touchOffsetY = touch.clientY - rect.top;
-
-    // Cria clone visual
     touchClone = arrastando.cloneNode(true);
-    touchClone.style.cssText = `
-      position: fixed;
-      left: ${rect.left}px;
-      top: ${rect.top}px;
-      width: ${rect.width}px;
-      opacity: 0.85;
-      pointer-events: none;
-      z-index: 9999;
-      box-shadow: 0 8px 24px rgba(0,0,0,0.4);
-      border-radius: 10px;
-      transition: none;
-    `;
+    touchClone.style.cssText = `position:fixed;left:${rect.left}px;top:${rect.top}px;width:${rect.width}px;opacity:0.85;pointer-events:none;z-index:9999;box-shadow:0 8px 24px rgba(0,0,0,0.4);border-radius:10px;transition:none;`;
     document.body.appendChild(touchClone);
     arrastando.classList.add("dragging");
     e.preventDefault();
@@ -308,25 +298,18 @@ function ativarDragQuadras(container) {
   container.addEventListener("touchmove", (e) => {
     if (!arrastando || !touchClone) return;
     e.preventDefault();
-
     const touch = e.touches[0];
     touchClone.style.left = `${touch.clientX - touchOffsetX}px`;
     touchClone.style.top  = `${touch.clientY - touchOffsetY}px`;
-
-    // Encontra o bloco sob o dedo
     touchClone.style.display = "none";
     const elAbaixo = document.elementFromPoint(touch.clientX, touch.clientY);
     touchClone.style.display = "";
-
     const alvo = elAbaixo?.closest(".quadra-bloco");
     if (!alvo || alvo === arrastando || alvo.dataset.quadra === "_OUTROS") return;
-
     document.querySelectorAll(".quadra-bloco").forEach((b) => b.classList.remove("drag-over-bloco"));
     alvo.classList.add("drag-over-bloco");
-
     const rect = alvo.getBoundingClientRect();
-    const meio = rect.top + rect.height / 2;
-    if (touch.clientY > meio) alvo.after(arrastando);
+    if (touch.clientY > rect.top + rect.height / 2) alvo.after(arrastando);
     else alvo.before(arrastando);
   }, { passive: false });
 
@@ -345,12 +328,10 @@ function ativarDragQuadras(container) {
 
 // ─── SINCRONIZAR ORDEM ────────────────────────────────────────────────────────
 function sincronizarOrdem(container) {
-  const novaOrdem = [...container.querySelectorAll(".quadra-bloco")]
-    .map((b) => b.dataset.quadra);
-
+  const novaOrdem = [...container.querySelectorAll(".quadra-bloco")].map((b) => b.dataset.quadra);
   dadosAgrupados = reordenarQuadras(dadosAgrupados, novaOrdem);
 
-  const resumo = resumoPorQuadra(dadosAgrupados);
+  const resumo  = resumoPorQuadra(dadosAgrupados);
   const chipsEl = document.querySelector(".resumo-chips");
   if (chipsEl) {
     chipsEl.innerHTML = Object.entries(resumo).map(([q, n]) => `
@@ -384,7 +365,7 @@ function configurarBotoes() {
     if (!dadosAgrupados) return;
     const texto = exportarTXT(dadosAgrupados, nomeArquivoAtual);
     await navigator.clipboard.writeText(texto);
-    const btn = document.getElementById("btn-copiar");
+    const btn  = document.getElementById("btn-copiar");
     const orig = btn.innerHTML;
     btn.innerHTML = "✓ Copiado!";
     btn.classList.add("btn-sucesso");
