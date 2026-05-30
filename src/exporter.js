@@ -36,14 +36,15 @@ export function exportarTXT(agrupado, nomeArquivo = "") {
 
       for (const { casa, qtd } of contarDuplicatas(numeros)) {
         const aviso = qtd > 1 ? `  ⚠️  ${qtd} pacotes` : "";
+        const { numero, tipo } = (casa && typeof casa === "object") ? casa : { numero: casa, tipo: "casa" };
 
         let label;
         if (isOutros) {
-          label = `  ${sublocal.padEnd(10)}  →  ${casa}`;
+          label = `  ${sublocal.padEnd(10)}  →  ${numero}`;
         } else if (isAmbiguo) {
-          label = `  [${"?".padEnd(9)}]  →  ${casa}  ⚠ AMBIGUO: pode ser conjunto ou casa`;
+          label = `  [${"?".padEnd(9)}]  →  ${numero}  ⚠ AMBIGUO: pode ser conjunto ou casa`;
         } else {
-          label = `  ${sublocal.padEnd(10)}  →  casa ${casa}`;
+          label = `  ${sublocal.padEnd(10)}  →  ${tipo === "ap" ? "ap" : "casa"} ${numero}`;
         }
 
         linhas.push(`[ ]  ${label}${aviso}`);
@@ -225,6 +226,7 @@ export function exportarPDF(agrupado, nomeArquivo = "rota") {
       const isAmbiguo = sublocal === "_ambiguo";
 
       for (const { casa, qtd } of contarDuplicatas(numeros)) {
+        const { numero: casaNum, tipo: casaTipo } = (casa && typeof casa === "object") ? casa : { numero: casa, tipo: "casa" };
         garantirEspaco(LINHA_H);
 
         // Fundo: amarelo claro para ambíguo, zebrado para o resto
@@ -285,7 +287,7 @@ export function exportarPDF(agrupado, nomeArquivo = "rota") {
         doc.setFontSize(9.5);
         doc.setFont("helvetica", "bold");
         doc.setTextColor(isAmbiguo ? 120 : C.pretoDark[0], isAmbiguo ? 60 : C.pretoDark[1], isAmbiguo ? 0 : C.pretoDark[2]);
-        const casaLabel = isOutros ? casa : isAmbiguo ? casa : `casa ${casa}`;
+        const casaLabel = isOutros ? casaNum : isAmbiguo ? casaNum : `${casaTipo === "ap" ? "ap" : "casa"} ${casaNum}`;
         doc.text(casaLabel, casaX, y + 6.2);
 
         // Aviso ambíguo (texto à direita)
@@ -334,13 +336,18 @@ export function exportarPDF(agrupado, nomeArquivo = "rota") {
 export function contarDuplicatas(numeros) {
   const mapa = new Map();
   for (const n of numeros) {
-    mapa.set(n, (mapa.get(n) || 0) + 1);
+    const item = (n && typeof n === "object") ? n : { numero: n, tipo: "casa", enderecoCompleto: null };
+    const chave = `${item.tipo}|${item.numero}`;
+    if (mapa.has(chave)) {
+      mapa.get(chave).qtd++;
+    } else {
+      mapa.set(chave, { casa: item, qtd: 1 });
+    }
   }
-  return [...mapa.entries()]
-    .sort(([a], [b]) => {
-      const na = parseInt(a), nb = parseInt(b);
+  return [...mapa.values()]
+    .sort((a, b) => {
+      const na = parseInt(a.casa.numero), nb = parseInt(b.casa.numero);
       if (!isNaN(na) && !isNaN(nb)) return na - nb;
-      return a.localeCompare(b);
-    })
-    .map(([casa, qtd]) => ({ casa, qtd }));
+      return String(a.casa.numero).localeCompare(String(b.casa.numero));
+    });
 }
