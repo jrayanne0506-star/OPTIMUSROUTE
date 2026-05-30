@@ -184,19 +184,17 @@ function renderizarResultado(agrupado, totalPacotes) {
 
 // ─── HELPERS DE ITEM ─────────────────────────────────────────────────────────
 
-// Normaliza item do array: pode ser string pura ou { numero, enderecoCompleto }
+// Normaliza item do array: agora sempre é objeto { numero, tipo, enderecoCompleto }
 function resolverItem(item) {
   if (item && typeof item === "object") {
-    return { numero: item.numero, enderecoCompleto: item.enderecoCompleto || null };
+    return {
+      numero: item.numero,
+      tipo: item.tipo || "casa",
+      enderecoCompleto: item.enderecoCompleto || null,
+    };
   }
-  return { numero: item, enderecoCompleto: null };
-}
-
-// Detecta se o número veio de um apartamento
-function tipoUnidade(textoOriginal, numero) {
-  if (!textoOriginal) return "casa";
-  if (/\b(?:ap\.?|apto\.?|apartamento)\b/i.test(textoOriginal)) return "ap";
-  return "casa";
+  // fallback para strings legadas
+  return { numero: item, tipo: "casa", enderecoCompleto: null };
 }
 
 // ─── CRIAÇÃO DE BLOCO DE QUADRA ───────────────────────────────────────────────
@@ -228,12 +226,11 @@ function criarBlocoQuadra(quadra, sublocs, numRota) {
   `;
   bloco.appendChild(header);
 
-  // Conteúdo: uma linha por sublocal + casa
   for (const [sublocal, numeros] of Object.entries(sublocs)) {
     const isAmbiguo = sublocal === "_ambiguo";
 
     for (const { casa, qtd } of contarDuplicatas(numeros)) {
-      const { numero, enderecoCompleto } = resolverItem(casa);
+      const { numero, tipo, enderecoCompleto } = resolverItem(casa);
 
       const linha = document.createElement("div");
       linha.className = "sublocal-linha" + (isAmbiguo ? " linha-ambigua" : "");
@@ -266,7 +263,7 @@ function criarBlocoQuadra(quadra, sublocs, numRota) {
       } else if (numero === "S/N") {
         casaSpan.textContent = "S/N";
       } else {
-        const tipo = tipoUnidade(enderecoCompleto, numero);
+        // Usa o tipo que vem diretamente do parser
         casaSpan.textContent = `${tipo === "ap" ? "ap" : "casa"} ${numero}`;
       }
 

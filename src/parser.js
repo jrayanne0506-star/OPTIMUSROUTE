@@ -40,18 +40,18 @@ export function parseRouteText(rawText) {
     const resultado = extrairEndereco(semPrefixo);
 
     if (resultado) {
-      const { quadra, sublocal, numero, enderecoCompleto } = resultado;
+      const { quadra, sublocal, numero, tipo, enderecoCompleto } = resultado;
       if (!agrupado.has(quadra)) agrupado.set(quadra, new Map());
       const sublocs = agrupado.get(quadra);
       if (!sublocs.has(sublocal)) sublocs.set(sublocal, []);
-      sublocs.get(sublocal).push(enderecoCompleto ? { numero, enderecoCompleto } : numero);
+      sublocs.get(sublocal).push({ numero, tipo, enderecoCompleto: enderecoCompleto || null });
     } else {
       const atipico = extrairAtipico(semPrefixo);
       if (atipico) {
         if (!agrupado.has("_OUTROS")) agrupado.set("_OUTROS", new Map());
         const sublocs = agrupado.get("_OUTROS");
         if (!sublocs.has(atipico.chave)) sublocs.set(atipico.chave, []);
-        sublocs.get(atipico.chave).push(atipico.numero);
+        sublocs.get(atipico.chave).push({ numero: atipico.numero, tipo: "casa", enderecoCompleto: null });
       } else {
         erros.push(semPrefixo);
       }
@@ -93,64 +93,60 @@ function extrairEndereco(texto) {
     return extrairEnderecoQNJ(texto, quadra);
   }
 
-  const numero = extrairNumero(texto);
+  const { numero, tipo } = extrairNumero(texto);
   const enderecoCompleto = numero === "S/N" ? texto : null;
-  return { quadra, sublocal, numero, enderecoCompleto };
+  return { quadra, sublocal, numero, tipo, enderecoCompleto };
 }
 
 // ─── LÓGICA ESPECIAL PARA QNJ ────────────────────────────────────────────────
-// QNJ 31, 12, Casa 2  → sublocal "Cj 12", numero "2"
-// QNJ 31, 10          → sublocal "?", numero "10" (ambíguo)
 
 function extrairEnderecoQNJ(texto, quadra) {
-  // Extrai todos os números após vírgulas
   const partesVirgula = texto.split(",").map(s => s.trim());
-  // partesVirgula[0] = "Quadra QNJ 31"
-  // partesVirgula[1] = "12"  (conjunto numérico)
-  // partesVirgula[2] = "Casa 2 no beco" (casa)
 
   const segundo = partesVirgula[1];
   const terceiro = partesVirgula[2];
 
   if (!segundo) {
-    // Sem nenhum número → fallback
-    return { quadra, sublocal: "Sem sublocal", numero: "?" };
+    return { quadra, sublocal: "Sem sublocal", numero: "?", tipo: "casa" };
   }
 
-  // Tenta extrair número explícito de casa no terceiro segmento
   const casaExplicita = terceiro
-    ? terceiro.match(/\b(?:casa|ap\.?|apto\.?)\s*(\d+[a-z]?)/i)
+    ? terceiro.match(/\b(?:casa|ap\.?|apto\.?|apartamento)\s*(\d+[a-z]?)/i)
     : null;
 
   if (casaExplicita) {
-    // Dois valores identificados: conjunto numérico + casa
     const conjunto = segundo.match(/\d+[a-z]?/i)?.[0] || segundo;
     const casa = casaExplicita[1];
-    return { quadra, sublocal: `Cj ${conjunto}`, numero: casa.toUpperCase() };
+    const tipoRaw = casaExplicita[0];
+    const tipo = /\b(?:ap\.?|apto\.?|apartamento)\b/i.test(tipoRaw) ? "ap" : "casa";
+    return { quadra, sublocal: `Cj ${conjunto}`, numero: casa.toUpperCase(), tipo };
   }
 
-  // Só tem um número — ambíguo
   const numSolto = segundo.match(/\d+[a-z]?/i)?.[0] || segundo;
-  return { quadra, sublocal: "_ambiguo", numero: numSolto.toUpperCase() };
+  return { quadra, sublocal: "_ambiguo", numero: numSolto.toUpperCase(), tipo: "casa" };
 }
 
 // ─── EXTRAÇÃO DO NÚMERO DA CASA ──────────────────────────────────────────────
 
 function extrairNumero(texto) {
   // 0. S/N explícito
-  if (/\bS\/N\b/i.test(texto)) return "S/N";
+  if (/\bS\/N\b/i.test(texto)) return { numero: "S/N", tipo: "casa" };
 
-  // 1. Explícito: "casa 13", "ap 101", "apto 301"
-  const casaExp = texto.match(/\b(?:casa|ap\.?|apto\.?)\s*(\d+[a-z]?)/i);
-  if (casaExp) return casaExp[1].toUpperCase();
+  // 1. Explícito: "casa 13", "ap 101", "apto 301", "apartamento 2"
+  const casaExp = texto.match(/\b(apartamento|ap\.?|apto\.?|casa)\s*(\d+[a-z]?)/i);
+  if (casaExp) {
+    const tipoRaw = casaExp[1].toLowerCase();
+    const tipo = /^(ap|apto|apartamento)/.test(tipoRaw) ? "ap" : "casa";
+    return { numero: casaExp[2].toUpperCase(), tipo };
+  }
 
   // 2. Primeiro número após vírgula
   const aposVirgula = texto.match(/,\s*(\d+[a-z]?)/i);
-  if (aposVirgula) return aposVirgula[1].toUpperCase();
+  if (aposVirgula) return { numero: aposVirgula[1].toUpperCase(), tipo: "casa" };
 
   // 3. Fallback: último número do texto
   const todos = texto.match(/\d+/g);
-  return todos ? todos[todos.length - 1] : "?";
+  return { numero: todos ? todos[todos.length - 1] : "?", tipo: "casa" };
 }
 
 // ─── EXTRAÇÃO DE ENDEREÇO ATÍPICO ────────────────────────────────────────────
@@ -170,9 +166,7 @@ function extrairAtipico(texto) {
 function converterParaObjeto(agrupado) {
   const resultado = {};
 
-  // Ordenar quadras em ordem crescente (por tipo e depois por número)
   const quadrasOrdenadas = [...agrupado.keys()].sort((a, b) => {
-    // "_OUTROS" sempre por último
     if (a === "_OUTROS") return 1;
     if (b === "_OUTROS") return -1;
 
