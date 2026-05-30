@@ -4,31 +4,22 @@
  * SAÍDA:
  * {
  *   "Quadra 203": {
- *     "Cj 14": ["05", "10", "13", "13", "13"],   ← duplicatas = múltiplos pacotes
- *     "Cj 15": ["20"],
- *     "Cj 16": ["05", "05", "05"],
+ *     "Cj 14": ["05", "10", "13", "13", ...],  ← array ordenado, duplicatas preservadas
+ *     "Cj 15": ["20", "20"],
  *   },
- *   "Quadra 204": { ... },
  *   "_OUTROS": { ... }
  * }
  *
  * ORDENAÇÃO:
- *   - Quadras: crescente numérico (203, 204, 205, 403...)
- *   - Conjuntos dentro da quadra: crescente numérico (1, 2, 3... 9, 10, 14...)
- *   - Casas dentro do conjunto: crescente numérico (01, 02, 03...)
+ *   Quadras   → crescente numérico (203, 204, 403...)
+ *   Conjuntos → crescente numérico (1, 2, 9, 10, 14...)
+ *   Casas     → crescente numérico (01, 02, 03...)
  */
 
-// ─── REGEX ────────────────────────────────────────────────────────────────────
-
-// Captura número da quadra: "Quadra 405", "Q 203", "Q Quadra 203", "403 conjunto..."
-const QUADRA_RE  = /(?:(?:q\.?\s*)?quadra\s+|^)(\d+)/i;
-
-// Captura número do conjunto: "Conjunto 14", "Cj 30", "Conj 9", "conjunto 4-A"
+// Captura "Quadra 405", "Q 203", "Q. 12" — e fallback "403 conjunto..."
+const QUADRA_RE   = /\b(?:quadra|q)\.?\s+(\d+)|^(\d+)\s+(?:conjunto|conj\.?|cj\.?)/i;
 const CONJUNTO_RE = /(?:conjunto|conj\.?|cj\.?)\s+([\d]+[a-z]?(?:-[a-z])?)/i;
-
-// Captura número da casa — estratégia em camadas (ver extrairCasa)
-
-// ─── FUNÇÃO PRINCIPAL ─────────────────────────────────────────────────────────
+const BLOCO_RE    = /(?:bloco|bl\.?)\s+([a-z0-9]+)/i;
 
 export function parseExcel(buffer) {
   const XLSX = window.XLSX;
@@ -42,12 +33,9 @@ export function parseExcel(buffer) {
 
   const header  = rows[0].map((c) => String(c).trim().toLowerCase());
   const colAddr = header.findIndex((h) => h.includes("destination") || h.includes("address"));
+  if (colAddr === -1) throw new Error('Coluna "Destination Address" não encontrada.');
 
-  if (colAddr === -1)
-    throw new Error('Coluna "Destination Address" não encontrada.');
-
-  // Acumula tudo em Map<quadraNum, Map<conjNum, casa[]>>
-  const agrupado = new Map(); // "203" → Map<"14" → ["05","10",...]>
+  const agrupado = new Map();
   const outros   = new Map();
 
   for (let i = 1; i < rows.length; i++) {
@@ -57,15 +45,11 @@ export function parseExcel(buffer) {
     const res = extrairEndereco(endereco);
 
     if (res) {
-      const { quadra, conjunto, casa } = res;
-
-      if (!agrupado.has(quadra)) agrupado.set(quadra, new Map());
-      const conjs = agrupado.get(quadra);
-
-      if (!conjs.has(conjunto)) conjs.set(conjunto, []);
-      conjs.get(conjunto).push(casa);
+      const { quadra, sublocal, casa } = res;
+      if (!agrupado.has(quadra))               agrupado.set(quadra, new Map());
+      if (!agrupado.get(quadra).has(sublocal)) agrupado.get(quadra).set(sublocal, []);
+      agrupado.get(quadra).get(sublocal).push(casa);
     } else {
-      // _OUTROS
       const partes = endereco.split(",");
       const chave  = partes[0].trim();
       const num    = partes[1]?.trim() || "?";
@@ -82,77 +66,65 @@ export function parseExcel(buffer) {
 // ─── EXTRAÇÃO ─────────────────────────────────────────────────────────────────
 
 function extrairEndereco(texto) {
-  // Quadra
   const qm = texto.match(QUADRA_RE);
   if (!qm) return null;
-  const quadra = qm[1]; // ex: "203"
+  const quadra = qm[1] || qm[2]; // grupo 1 (Q/Quadra) ou grupo 2 (número inicial)
 
-  // Conjunto
+  // Sublocal: Conjunto > Bloco > Sem sublocal
   const cm = texto.match(CONJUNTO_RE);
-  const conjunto = cm ? cm[1].toUpperCase() : "SEM CONJUNTO";
+  const bm = texto.match(BLOCO_RE);
+  let sublocal = "Sem sublocal";
+  if (cm)      sublocal = `Cj ${cm[1].toUpperCase()}`;
+  else if (bm) sublocal = `Bl ${bm[1].toUpperCase()}`;
 
-  // Casa
   const casa = extrairCasa(texto);
-
-  return { quadra, conjunto, casa };
+  return { quadra, sublocal, casa };
 }
 
 function extrairCasa(texto) {
-  // 1. "casa 13", "cs 02", "cs14" explícito
+  // 1. Explícito: "casa 13", "cs 02"
   const casaExp = texto.match(/\b(?:casa|cs\.?)\s*(\d+[a-z]?)/i);
-  if (casaExp) return casaExp[1].replace(/^0+(\d)/, "$1"); // remove zero à esquerda opcional
+  if (casaExp) return casaExp[1];
 
-  // 2. Primeiro número após vírgula (formato mais comum: "Conjunto 14, 08")
+  // 2. Primeiro número após vírgula — "Conjunto 14, 08"
   const aposVirgula = texto.match(/,\s*(\d+[a-z]?)/i);
-  if (aposVirgula) {
-    const n = aposVirgula[1];
-    // ignora "0" isolado (sem número real)
-    if (n !== "0") return n;
-  }
+  if (aposVirgula && aposVirgula[1] !== "0") return aposVirgula[1];
 
-  // 3. Último número do texto como fallback
+  // 3. Fallback: último número do texto
   const todos = texto.match(/\d+/g);
-  if (todos && todos.length > 0) return todos[todos.length - 1];
-
-  return "?";
+  return todos ? todos[todos.length - 1] : "?";
 }
 
-// ─── CONVERSÃO + ORDENAÇÃO ────────────────────────────────────────────────────
+// ─── ORDENAÇÃO ────────────────────────────────────────────────────────────────
+
+function numSort(a, b) {
+  const na = parseInt(a), nb = parseInt(b);
+  if (!isNaN(na) && !isNaN(nb)) return na - nb;
+  return a.localeCompare(b);
+}
 
 function converterOrdenado(agrupado, outros) {
   const resultado = {};
 
-  // Ordena quadras numericamente
-  const quadrasOrdenadas = [...agrupado.keys()].sort((a, b) => parseInt(a) - parseInt(b));
-
-  for (const quadra of quadrasOrdenadas) {
-    const conjs = agrupado.get(quadra);
+  for (const quadra of [...agrupado.keys()].sort(numSort)) {
+    const sublocs     = agrupado.get(quadra);
     const chaveQuadra = `Quadra ${quadra}`;
     resultado[chaveQuadra] = {};
 
-    // Ordena conjuntos: numérico primeiro, depois alfanumérico
-    const conjsOrdenados = [...conjs.keys()].sort((a, b) => {
-      const na = parseInt(a), nb = parseInt(b);
-      if (!isNaN(na) && !isNaN(nb)) return na - nb;
+    for (const sub of [...sublocs.keys()].sort((a, b) => {
+      // Bl antes de Cj, depois Sem sublocal; dentro de cada grupo, numérico
+      const prio = (s) => s.startsWith("Bl") ? 0 : s.startsWith("Cj") ? 1 : 2;
+      const pa = prio(a), pb = prio(b);
+      if (pa !== pb) return pa - pb;
+      // extrai número para ordenar numericamente (Cj 9 < Cj 10)
+      const na = parseInt(a.replace(/\D/g, "")), nb2 = parseInt(b.replace(/\D/g, ""));
+      if (!isNaN(na) && !isNaN(nb2)) return na - nb2;
       return a.localeCompare(b);
-    });
-
-    for (const conj of conjsOrdenados) {
-      const casas = conjs.get(conj);
-      const chaveConj = conj === "SEM CONJUNTO" ? "Sem conjunto" : `Cj ${conj}`;
-
-      // Ordena casas numericamente
-      casas.sort((a, b) => {
-        const na = parseInt(a), nb = parseInt(b);
-        if (!isNaN(na) && !isNaN(nb)) return na - nb;
-        return a.localeCompare(b);
-      });
-
-      resultado[chaveQuadra][chaveConj] = casas;
+    })) {
+      resultado[chaveQuadra][sub] = [...sublocs.get(sub)].sort(numSort);
     }
   }
 
-  // _OUTROS no final
   if (outros.size > 0) {
     resultado["_OUTROS"] = {};
     for (const [chave, nums] of outros) {
