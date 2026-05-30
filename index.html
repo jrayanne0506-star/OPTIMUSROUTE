@@ -295,36 +295,53 @@
 
       /* ── SUBLOCAL ── */
       .sublocal-linha {
-        display: flex; align-items: center; gap: 8px;
-        padding: 6px 12px; border-bottom: 1px solid rgba(42,42,42,0.6);
-        flex-wrap: wrap; transition: background 0.15s;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 7px 12px;
+        border-bottom: 1px solid rgba(42,42,42,0.6);
+        transition: background 0.15s;
       }
       .sublocal-linha:last-child { border-bottom: none; }
       .sublocal-linha:hover { background: rgba(255,255,255,0.018); }
 
+      /* Badge Cj / Bl */
       .sublocal-badge {
         font-size: 9px; font-weight: 800; letter-spacing: 0.7px;
         border-radius: 5px; padding: 3px 9px; white-space: nowrap;
         flex-shrink: 0; min-width: 48px; text-align: center;
       }
-      .badge-bloco    { background: rgba(60,120,255,0.12); color: #7eaaff; border: 1px solid rgba(60,120,255,0.22); }
-      .badge-conjunto { background: rgba(0,210,160,0.08); color: #5de0c4; border: 1px solid rgba(0,210,160,0.18); }
+      .badge-bloco    { background: rgba(6,95,70,0.15);  color: #34d399; border: 1px solid rgba(6,95,70,0.3); }
+      .badge-conjunto { background: rgba(60,120,255,0.12); color: #7eaaff; border: 1px solid rgba(60,120,255,0.22); }
       .badge-sem      { background: var(--card2); color: var(--gray2); border: 1px solid var(--border); }
 
-      .chips-container { display: flex; flex-wrap: wrap; gap: 4px; }
+      /* Seta → */
+      .seta-casa {
+        color: var(--gray2);
+        font-size: 12px;
+        flex-shrink: 0;
+      }
 
-      .chip-numero {
-        display: inline-flex; align-items: center; gap: 3px;
-        background: var(--card2); color: var(--white);
-        border: 1px solid var(--border); border-radius: 5px;
-        padding: 2px 8px; font-size: 11px; font-weight: 600;
-        transition: all 0.12s; cursor: default;
+      /* Número da casa */
+      .casa-numero {
+        font-size: 13px;
+        font-weight: 700;
+        color: var(--white);
+        flex: 1;
       }
-      .chip-numero:hover { background: var(--card3); border-color: var(--border2); }
-      .chip-multi {
-        background: var(--orange-bg); color: var(--orange2); border-color: var(--orange-bd);
+
+      /* Badge de alerta ⚠️ X pacotes */
+      .alerta-pacotes {
+        font-size: 11px;
+        font-weight: 700;
+        color: #92400e;
+        background: #fef3c7;
+        border: 1px solid #d97706;
+        border-radius: 20px;
+        padding: 2px 10px;
+        white-space: nowrap;
+        flex-shrink: 0;
       }
-      .chip-qtd { font-size: 10px; opacity: 0.8; font-weight: 700; }
 
       /* ── LEGENDA ── */
       .legenda {
@@ -400,7 +417,7 @@
         <div class="hero">
           <div class="hero-eyebrow"><i></i> Ferramenta de Rota</div>
           <h1>Organize suas entregas<br><span>por quadra</span></h1>
-          <p>Transforme o PDF da Shopee em uma rota organizada por quadra, bloco e conjunto — em segundos.</p>
+          <p>Transforme o arquivo da Shopee em uma rota organizada por quadra, bloco e conjunto — em segundos.</p>
         </div>
 
         <div id="drop-zone">
@@ -412,12 +429,12 @@
               <span class="formato-tag">PDF</span>
               <span class="formato-tag">TXT</span>
               <span class="formato-tag">CSV</span>
-              <span class="formato-tag">XLSX</span> 
+              <span class="formato-tag">XLSX</span>
             </div>
           </div>
         </div>
-       <input type="file" id="file-input" accept=".pdf,.txt,.csv,.xlsx" />
-
+        <input type="file" id="file-input" accept=".pdf,.txt,.csv,.xlsx" />
+      </section>
 
       <div id="loading">
         <div class="spinner"></div>
@@ -453,11 +470,7 @@
             Conjunto (casas)
           </div>
           <div class="legenda-item">
-            <span class="chip-numero" style="font-size:10px;">42</span>
-            1 pacote
-          </div>
-          <div class="legenda-item">
-            <span class="chip-numero chip-multi" style="font-size:10px;">15 <strong class="chip-qtd">×3</strong></span>
+            <span class="alerta-pacotes" style="font-size:10px;">⚠️ 3 pacotes</span>
             Múltiplos pacotes
           </div>
           <span class="legenda-mobile">☰ arraste para reordenar</span>
