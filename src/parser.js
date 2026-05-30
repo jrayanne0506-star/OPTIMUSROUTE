@@ -166,7 +166,26 @@ function extrairAtipico(texto) {
 function converterParaObjeto(agrupado) {
   const resultado = {};
 
-  for (const [quadra, sublocsMap] of agrupado) {
+  // Ordenar quadras em ordem crescente (por tipo e depois por número)
+  const quadrasOrdenadas = [...agrupado.keys()].sort((a, b) => {
+    // "_OUTROS" sempre por último
+    if (a === "_OUTROS") return 1;
+    if (b === "_OUTROS") return -1;
+
+    const parse = (s) => {
+      const m = s.match(/^([A-Z\/]+)\s+(\d+(?:\/\d+)?)/i);
+      return m ? { tipo: m[1].toUpperCase(), num: parseFloat(m[2]) } : null;
+    };
+
+    const pa = parse(a), pb = parse(b);
+    if (!pa || !pb) return a.localeCompare(b);
+
+    if (pa.tipo !== pb.tipo) return pa.tipo.localeCompare(pb.tipo);
+    return pa.num - pb.num;
+  });
+
+  for (const quadra of quadrasOrdenadas) {
+    const sublocsMap = agrupado.get(quadra);
     const chaves = [...sublocsMap.keys()];
 
     chaves.sort((a, b) => {
